@@ -1,0 +1,213 @@
+// Prisma schema for Neo-Brisnet e-commerce platform
+// Database: MySQL 8
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Users
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  orders              Order[]
+  creditTransactions  CreditTransaction[]
+  subscriptions       Subscription[]
+  productAccess       ProductAccess[]
+
+  @@map("users")
+}
+
+// Products (core e-commerce, not from Strapi)
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String   @db.Text
+  contentType String   // pdf, csv, video, picks, web
+
+  // Dual pricing
+  cashPrice   Decimal  @db.Decimal(10, 2)
+  creditPrice Int
+
+  // Metadata
+  thumbnail   String?
+  downloadUrl String?
+  popularity  Int      @default(0)
+  isFeatured  Boolean  @default(false)
+
+  // Tags (stored as JSON for flexibility)
+  tags        Json     // { track, date, raceType, productType, creator }
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  orderItems    OrderItem[]
+  productAccess ProductAccess[]
+
+  @@index([isFeatured])
+  @@index([popularity])
+  @@map("products")
+}
+
+// Orders
+model Order {
+  id        String   @id @default(uuid())
+  userId    String
+  status    String   // pending, completed, failed, refunded
+
+  // Totals
+  cashTotal    Decimal @default(0) @db.Decimal(10, 2)
+  creditsTotal Int     @default(0)
+
+  // Payment tracking
+  elavonTransactionId String?
+  stripePaymentIntent String?
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  // Relations
+  user       User        @relation(fields: [userId], references: [id])
+  orderItems OrderItem[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+// Order Items
+model OrderItem {
+  id              String  @id @default(uuid())
+  orderId         String
+  productId       String
+
+  // Snapshot of product at purchase time
+  productSnapshot Json
+
+  // Payment method for this item
+  paymentMethod   String  // cash | credits
+  price           Decimal? @db.Decimal(10, 2)
+  creditPrice     Int?
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+// Credit Ledger
+model CreditTransaction {
+  id              String    @id @default(uuid())
+  userId          String
+
+  amount          Int       // positive = credit, negative = debit
+  balanceAfter    Int
+
+  transactionType String    // purchase, spend, refund, bonus, expiration
+  referenceId     String?   // order_id, subscription_id, etc.
+
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@map("credit_transactions")
+}
+
+// Subscriptions
+model Subscription {
+  id                 String    @id @default(uuid())
+  userId             String
+  planId             String    // Reference to Strapi plan or internal plan
+  status             String    // active, past_due, canceled, paused
+
+  // Payment token (Elavon or Stripe)
+  elavonToken        String?
+  stripeSubscriptionId String?
+
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean   @default(false)
+
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([currentPeriodEnd])
+  @@map("subscriptions")
+}
+
+// Product Access (entitlements)
+model ProductAccess {
+  id         String    @id @default(uuid())
+  userId     String
+  productId  String
+
+  accessType String    // purchase, subscription
+  grantedAt  DateTime  @default(now())
+  expiresAt  DateTime? // NULL for permanent access
+
+  downloadCount Int     @default(0)
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+  @@index([expiresAt])
+  @@map("product_access")
+}
+
+// Creators (for attribution and royalties)
+model Creator {
+  id           String  @id @default(uuid())
+  name         String
+  slug         String  @unique
+  bio          String? @db.Text
+  avatar       String?
+  royaltyRate  Decimal @default(0) @db.Decimal(5, 2) // percentage
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("creators")
+}
+
+// Tracks (for filtering)
+model Track {
+  id       String @id @default(uuid())
+  code     String @unique // SAR, CD, BEL
+  name     String         // Saratoga, Churchill Downs
+  location String
+  raceType String         // Thoroughbred, Harness
+  timezone String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("tracks")
+}
