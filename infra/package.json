@@ -1,0 +1,17 @@
+{
+  "name": "@neo-brisnet/infra",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "sst dev",
+    "deploy": "sst deploy --stage production",
+    "remove": "sst remove"
+  },
+  "dependencies": {
+    "sst": "^3.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}
